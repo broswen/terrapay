@@ -1,0 +1,5 @@
+# ignore compile go lambdas
+bin
+
+# ignore local terraform state files
+.terraform
