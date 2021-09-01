@@ -18,7 +18,6 @@ provider "aws" {
   region  = var.region
 }
 
-
 # dynamodb table: single table design to hold accounts and transactions
 resource "aws_dynamodb_table" "accounts" {
   billing_mode = "PAY_PER_REQUEST"
@@ -36,8 +35,10 @@ resource "aws_dynamodb_table" "accounts" {
   stream_view_type = "NEW_IMAGE"
 }
 
-# s3 bucket to store transactions event archive
-resource "aws_s3_bucket" "transactions" {
+# maps dynamodb stream events to kinesis data stream
+resource "aws_dynamodb_kinesis_streaming_destination" "transactions" {
+  strestream_arn = aws_kinesis_stream.transaction.arn
+  table_name     = aws_dynamodb_table.accounts.name
 }
 
 # kinesis stream to hold dynamodb events
@@ -73,7 +74,16 @@ resource "aws_kinesis_firehose_delivery_stream" "transactions" {
   }
 }
 
-# iam role for firehose to write to s3
+# s3 bucket to store transactions event archive
+resource "aws_s3_bucket" "transactions" {
+}
+
+# iam role for firehose to read from kinesis and write to s3
+# iam role for lambda event processor to run
+# iam role for api lambdas to read/write to dynamodb
+# iam role for transaction notification to publish to sns and read from dynamodb stream
+
+# iam role 
 # "Action": [
 #   "s3:GetObject",
 #   "s3:PutObject",
@@ -91,9 +101,3 @@ resource "aws_kinesis_firehose_delivery_stream" "transactions" {
 #   "lambda:InvokeFunction",
 #   "lambda:GetFunctionConfiguration"
 # ],
-
-# sqs queue to hold dynamodb events to process transaction notifications
-module "transactions_queue" {
-  source            = "./modules/queue_dlq"
-  max_receive_count = 1
-}
