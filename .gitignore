@@ -3,3 +3,6 @@ bin
 
 # ignore local terraform state files
 .terraform
+
+# ignore aws lambda module builds
+builds

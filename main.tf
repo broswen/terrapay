@@ -51,15 +51,16 @@ resource "aws_kinesis_stream" "transactions" {
 
 # kinesis firehose stream to put events in s3
 resource "aws_kinesis_firehose_delivery_stream" "transactions" {
+  name        = "${var.name}-${var.stage}-transactions"
   destination = "extended_s3"
 
   kinesis_source_configuration {
     kinesis_stream_arn = aws_kinesis_stream.transactions.arn
-    role_arn           = aws_iam_role.firehose_delivery.arn
+    role_arn           = aws_iam_role.delivery_role.arn
   }
 
   extended_s3_configuration {
-    role_arn   = aws_iam_role.firehose_delivery.arn
+    role_arn   = aws_iam_role.delivery_role.arn
     bucket_arn = aws_s3_bucket.transactions.arn
 
     processing_configuration {
@@ -68,7 +69,7 @@ resource "aws_kinesis_firehose_delivery_stream" "transactions" {
         type = "Lambda"
         parameters {
           parameter_name  = "LambdaArn"
-          parameter_value = "${module.event_processor.arn}:$LATEST"
+          parameter_value = "${module.event_processor.lambda_function_arn}:$LATEST"
         }
       }
     }
@@ -92,6 +93,11 @@ module "register_lambda" {
   environment_variables = {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
+
+  attach_policies = true
+  policies = [
+    aws_iam_policy.read_write_accounts.arn
+  ]
 }
 
 module "login_lambda" {
@@ -107,6 +113,11 @@ module "login_lambda" {
   environment_variables = {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
+
+  attach_policies = true
+  policies = [
+    aws_iam_policy.read_write_accounts.arn
+  ]
 }
 
 module "post_transaction" {
@@ -122,6 +133,11 @@ module "post_transaction" {
   environment_variables = {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
+
+  attach_policies = true
+  policies = [
+    aws_iam_policy.read_write_accounts.arn
+  ]
 }
 
 module "get_transactions" {
@@ -137,6 +153,11 @@ module "get_transactions" {
   environment_variables = {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
+
+  attach_policies = true
+  policies = [
+    aws_iam_policy.read_write_accounts.arn
+  ]
 }
 
 module "send_notification" {
@@ -165,6 +186,87 @@ module "event_processor" {
   source_path = "./bin/event_processor"
 }
 
+resource "aws_iam_policy" "read_write_accounts" {
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query",
+          "dynamodb:TransactWriteItems"
+        ]
+        Effect = "Allow"
+        Resource = [
+          "${aws_dynamodb_table.accounts.arn}"
+        ]
+      },
+    ]
+  })
+}
+
+resource "aws_iam_policy" "kinesis_read" {
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "kinesis:PutRecord",
+          "kinesis:PutRecords",
+          "kinesis:DescribeStream",
+          "kinesis:DescribeStreamSummary",
+          "kinesis:GetRecords",
+          "kinesis:GetShardIterator",
+          "kinesis:ListShards",
+          "kinesis:ListStreams",
+          "kinesis:SubscribeToShard"
+        ]
+        Effect = "Allow"
+        Resource = [
+          "${aws_kinesis_firehose_delivery_stream.transactions.arn}",
+        ]
+      },
+    ]
+  })
+}
+
+resource "aws_iam_policy" "s3_put" {
+  policy = jsonencode({
+    Version = "2021-10-17"
+    Statement = [
+      {
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:CopyObject",
+        ]
+        Effect = "Allow"
+        Resource = [
+          "${aws_s3_bucket.transactions.arn}",
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "delivery_role" {
+  assume_role_policy = jsonencode({
+    Version = "2021-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "firehose.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
 # iam role for firehose to read from kinesis and write to s3
 # iam role for lambda event processor to run
 # iam role for api lambdas to read/write to dynamodb
@@ -176,15 +278,7 @@ module "event_processor" {
 #   "s3:PutObject",
 #   "s3:DeleteObject",
 #   "s3:CopyObject",
-#   "kinesis:PutRecord",
-#   "kinesis:PutRecords",
-#   "kinesis:DescribeStream",
-#   "kinesis:DescribeStreamSummary",
-#   "kinesis:GetRecords",
-#   "kinesis:GetShardIterator",
-#   "kinesis:ListShards",
-#   "kinesis:ListStreams",
-#   "kinesis:SubscribeToShared",
+
 #   "lambda:InvokeFunction",
 #   "lambda:GetFunctionConfiguration"
 # ],
