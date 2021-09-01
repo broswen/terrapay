@@ -20,6 +20,7 @@ provider "aws" {
 
 # dynamodb table: single table design to hold accounts and transactions
 resource "aws_dynamodb_table" "accounts" {
+  name         = "${var.name}-${var.stage}-accounts"
   billing_mode = "PAY_PER_REQUEST"
   attribute {
     name = "PK"
@@ -37,13 +38,13 @@ resource "aws_dynamodb_table" "accounts" {
 
 # maps dynamodb stream events to kinesis data stream
 resource "aws_dynamodb_kinesis_streaming_destination" "transactions" {
-  strestream_arn = aws_kinesis_stream.transaction.arn
-  table_name     = aws_dynamodb_table.accounts.name
+  stream_arn = aws_kinesis_stream.transactions.arn
+  table_name = aws_dynamodb_table.accounts.name
 }
 
 # kinesis stream to hold dynamodb events
 resource "aws_kinesis_stream" "transactions" {
-  name             = "transactions-stream-${var.stage}"
+  name             = "${var.name}-${var.stage}-transactions"
   shard_count      = 1
   retention_period = 24 # hours
 }
@@ -67,7 +68,7 @@ resource "aws_kinesis_firehose_delivery_stream" "transactions" {
         type = "Lambda"
         parameters {
           parameter_name  = "LambdaArn"
-          parameter_value = ":$LATEST"
+          parameter_value = "${module.event_processor.arn}:$LATEST"
         }
       }
     }
@@ -76,6 +77,92 @@ resource "aws_kinesis_firehose_delivery_stream" "transactions" {
 
 # s3 bucket to store transactions event archive
 resource "aws_s3_bucket" "transactions" {
+}
+
+module "register_lambda" {
+  source        = "terraform-aws-modules/lambda/aws"
+  function_name = "${var.name}-${var.stage}-register"
+  handler       = "register"
+  runtime       = "go1.x"
+  memory_size   = 128
+  timeout       = 3
+
+  source_path = "./bin/register"
+
+  environment_variables = {
+    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+  }
+}
+
+module "login_lambda" {
+  source        = "terraform-aws-modules/lambda/aws"
+  function_name = "${var.name}-${var.stage}-login"
+  handler       = "login"
+  runtime       = "go1.x"
+  memory_size   = 128
+  timeout       = 3
+
+  source_path = "./bin/login"
+
+  environment_variables = {
+    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+  }
+}
+
+module "post_transaction" {
+  source        = "terraform-aws-modules/lambda/aws"
+  function_name = "${var.name}-${var.stage}-post-transaction"
+  handler       = "post_transaction"
+  runtime       = "go1.x"
+  memory_size   = 128
+  timeout       = 3
+
+  source_path = "./bin/post_transaction"
+
+  environment_variables = {
+    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+  }
+}
+
+module "get_transactions" {
+  source        = "terraform-aws-modules/lambda/aws"
+  function_name = "${var.name}-${var.stage}-get-transactions"
+  handler       = "get_transactions"
+  runtime       = "go1.x"
+  memory_size   = 128
+  timeout       = 3
+
+  source_path = "./bin/get_transactions"
+
+  environment_variables = {
+    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+  }
+}
+
+module "send_notification" {
+  source        = "terraform-aws-modules/lambda/aws"
+  function_name = "${var.name}-${var.stage}-send-notification"
+  handler       = "send_notification"
+  runtime       = "go1.x"
+  memory_size   = 128
+  timeout       = 3
+
+  source_path = "./bin/send_notification"
+
+  environment_variables = {
+    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+  }
+}
+
+module "event_processor" {
+  source        = "terraform-aws-modules/lambda/aws"
+  function_name = "${var.name}-${var.stage}-event-processor"
+  handler       = "event_processor"
+  runtime       = "go1.x"
+  memory_size   = 128
+  timeout       = 3
+
+  source_path = "./bin/event_processor"
 }
 
 # iam role for firehose to read from kinesis and write to s3
@@ -101,3 +188,4 @@ resource "aws_s3_bucket" "transactions" {
 #   "lambda:InvokeFunction",
 #   "lambda:GetFunctionConfiguration"
 # ],
+

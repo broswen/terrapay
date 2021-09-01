@@ -7,3 +7,8 @@ variable "stage" {
   type    = string
   default = "dev"
 }
+
+variable "name" {
+  type    = string
+  default = "terrapay"
+}
