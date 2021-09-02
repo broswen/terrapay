@@ -181,7 +181,7 @@ module "event_processor" {
   handler       = "event_processor"
   runtime       = "go1.x"
   memory_size   = 128
-  timeout       = 3
+  timeout       = 60
 
   source_path = "./bin/event_processor"
 }
@@ -225,7 +225,7 @@ resource "aws_iam_policy" "kinesis_read" {
         ]
         Effect = "Allow"
         Resource = [
-          "${aws_kinesis_firehose_delivery_stream.transactions.arn}",
+          "${aws_kinesis_stream.transactions.arn}",
         ]
       },
     ]
@@ -234,7 +234,7 @@ resource "aws_iam_policy" "kinesis_read" {
 
 resource "aws_iam_policy" "s3_put" {
   policy = jsonencode({
-    Version = "2021-10-17"
+    Version = "2012-10-17"
     Statement = [
       {
         Action = [
@@ -245,7 +245,25 @@ resource "aws_iam_policy" "s3_put" {
         ]
         Effect = "Allow"
         Resource = [
-          "${aws_s3_bucket.transactions.arn}",
+          "${aws_s3_bucket.transactions.arn}/*",
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy" "event_processor_invoke" {
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "lambda:InvokeFunction",
+          "lambda:GetFunctionConfiguration"
+        ]
+        Effect = "Allow"
+        Resource = [
+          "${module.event_processor.lambda_function_arn}",
         ]
       }
     ]
@@ -254,7 +272,7 @@ resource "aws_iam_policy" "s3_put" {
 
 resource "aws_iam_role" "delivery_role" {
   assume_role_policy = jsonencode({
-    Version = "2021-10-17"
+    Version = "2012-10-17"
     Statement = [
       {
         Action = "sts:AssumeRole"
@@ -265,6 +283,21 @@ resource "aws_iam_role" "delivery_role" {
       }
     ]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "delivery_role_kinesis_read" {
+  role       = aws_iam_role.delivery_role.name
+  policy_arn = aws_iam_policy.kinesis_read.arn
+}
+
+resource "aws_iam_role_policy_attachment" "delivery_role_s3_put" {
+  role       = aws_iam_role.delivery_role.name
+  policy_arn = aws_iam_policy.s3_put.arn
+}
+
+resource "aws_iam_role_policy_attachment" "delivery_role_event_processor" {
+  role       = aws_iam_role.delivery_role.name
+  policy_arn = aws_iam_policy.event_processor_invoke.arn
 }
 
 # iam role for firehose to read from kinesis and write to s3
@@ -279,7 +312,5 @@ resource "aws_iam_role" "delivery_role" {
 #   "s3:DeleteObject",
 #   "s3:CopyObject",
 
-#   "lambda:InvokeFunction",
-#   "lambda:GetFunctionConfiguration"
 # ],
 
