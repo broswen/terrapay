@@ -2,24 +2,25 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-func HandleRequest(ctx context.Context) (string, error) {
-	response := struct {
-		Msg string `json:"msg"`
-	}{
-		Msg: "hello",
+func HandleRequest(ctx context.Context, event events.KinesisFirehoseEvent) (events.KinesisFirehoseResponse, error) {
+	records := make([]events.KinesisFirehoseResponseRecord, 0)
+	for _, record := range event.Records {
+		responseRecord := events.KinesisFirehoseResponseRecord{
+			RecordID: record.RecordID,
+			Result:   events.KinesisFirehoseTransformedStateOk,
+			Data:     append(record.Data, []byte("\n")...),
+		}
+		records = append(records, responseRecord)
 	}
 
-	j, err := json.Marshal(response)
-	if err != nil {
-		return "", err
-	}
-
-	return string(j), nil
+	return events.KinesisFirehoseResponse{
+		Records: records,
+	}, nil
 }
 
 func main() {
