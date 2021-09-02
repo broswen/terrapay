@@ -3,23 +3,43 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"golang.org/x/crypto/bcrypt"
 )
 
-func HandleRequest(ctx context.Context) (string, error) {
-	response := struct {
-		Msg string `json:"msg"`
-	}{
-		Msg: "hello",
-	}
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
 
-	j, err := json.Marshal(response)
+func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+
+	var request RegisterRequest
+	err := json.Unmarshal([]byte(event.Body), &request)
 	if err != nil {
-		return "", err
+		return events.APIGatewayV2HTTPResponse{}, err
 	}
 
-	return string(j), nil
+	fmt.Printf("%v\n", request)
+
+	// validate request
+
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return events.APIGatewayV2HTTPResponse{}, err
+	}
+
+	fmt.Println(string(hashedBytes))
+	// check if user already exists
+	// bcrypt hash password
+	// insert into dynamodb table
+
+	return events.APIGatewayV2HTTPResponse{
+		StatusCode: 200,
+	}, nil
 }
 
 func main() {
