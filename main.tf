@@ -263,7 +263,7 @@ resource "aws_iam_policy" "event_processor_invoke" {
         ]
         Effect = "Allow"
         Resource = [
-          "${module.event_processor.lambda_function_arn}",
+          "${module.event_processor.lambda_function_arn}:*",
         ]
       }
     ]
