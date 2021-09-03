@@ -94,7 +94,8 @@ module "register_lambda" {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
 
-  attach_policies = true
+  attach_policies    = true
+  number_of_policies = 1
   policies = [
     aws_iam_policy.read_write_accounts.arn
   ]
@@ -114,7 +115,8 @@ module "login_lambda" {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
 
-  attach_policies = true
+  attach_policies    = true
+  number_of_policies = 1
   policies = [
     aws_iam_policy.read_write_accounts.arn
   ]
@@ -134,7 +136,8 @@ module "post_transaction" {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
 
-  attach_policies = true
+  attach_policies    = true
+  number_of_policies = 1
   policies = [
     aws_iam_policy.read_write_accounts.arn
   ]
@@ -154,10 +157,17 @@ module "get_transactions" {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
 
-  attach_policies = true
+  attach_policies    = true
+  number_of_policies = 1
   policies = [
     aws_iam_policy.read_write_accounts.arn
   ]
+}
+
+resource "aws_lambda_event_source_mapping" "accounts_stream" {
+  event_source_arn  = aws_dynamodb_table.accounts.stream_arn
+  function_name     = module.send_notification.lambda_function_arn
+  starting_position = "LATEST"
 }
 
 module "send_notification" {
@@ -167,12 +177,27 @@ module "send_notification" {
   runtime       = "go1.x"
   memory_size   = 128
   timeout       = 3
+  publish       = true
 
   source_path = "./bin/send_notification"
 
   environment_variables = {
     ACCOUNTSDB = aws_dynamodb_table.accounts.name
   }
+
+  allowed_triggers = {
+    AccountsStream = {
+      service    = "dynamodb"
+      source_arn = aws_dynamodb_table.accounts.stream_arn
+    }
+  }
+
+  attach_policies    = true
+  number_of_policies = 1
+  policies = [
+    aws_iam_policy.read_accounts_stream.arn
+  ]
+
 }
 
 module "event_processor" {
@@ -264,6 +289,27 @@ resource "aws_iam_policy" "event_processor_invoke" {
         Effect = "Allow"
         Resource = [
           "${module.event_processor.lambda_function_arn}:*",
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy" "read_accounts_stream" {
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "dynamodb:GetRecords",
+          "dynamodb:GetShardIterator",
+          "dynamodb:DescribeStream",
+          "dynamodb:ListShards",
+          "dynamodb:ListStreams"
+        ]
+        Effect = "Allow"
+        Resource = [
+          "${aws_dynamodb_table.accounts.stream_arn}",
         ]
       }
     ]
