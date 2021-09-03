@@ -8,6 +8,14 @@ import (
 )
 
 func HandleRequest(ctx context.Context) (string, error) {
+
+	// get info from account
+
+	// parse query params ?from=2021-08-12&to=2021-08-18
+
+	// return account balance, id
+	// return list of transactions within date range
+
 	response := struct {
 		Msg string `json:"msg"`
 	}{
