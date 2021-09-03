@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-func HandleRequest(ctx context.Context) (string, error) {
+func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 
 	// get info from account
 
@@ -16,18 +16,9 @@ func HandleRequest(ctx context.Context) (string, error) {
 	// return account balance, id
 	// return list of transactions within date range
 
-	response := struct {
-		Msg string `json:"msg"`
-	}{
-		Msg: "hello",
-	}
-
-	j, err := json.Marshal(response)
-	if err != nil {
-		return "", err
-	}
-
-	return string(j), nil
+	return events.APIGatewayV2HTTPResponse{
+		StatusCode: 200,
+	}, nil
 }
 
 func main() {
