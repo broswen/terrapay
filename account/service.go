@@ -292,3 +292,17 @@ func (as AccountService) PostTransaction(ctx context.Context, sender, receiver s
 
 	return transaction, nil
 }
+
+func ValidateJWT(t string) (*jwt.StandardClaims, error) {
+	token, err := jwt.ParseWithClaims(t, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(os.Getenv("SECRET")), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*jwt.StandardClaims); ok && token.Valid {
+		return claims, nil
+	}
+	return nil, fmt.Errorf("token is invalid")
+}

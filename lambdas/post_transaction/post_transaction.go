@@ -5,7 +5,17 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/broswen/terrapay/account"
 )
+
+type PostTransactionRequest struct {
+	Recipient string  `json:"recipient"`
+	Amount    float64 `json:"amount"`
+}
+
+type PostTransactionResponse struct {
+	Transaction account.Transaction
+}
 
 func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 
