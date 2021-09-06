@@ -3,7 +3,6 @@ package account
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"time"
@@ -37,7 +36,6 @@ func (as AccountService) Register(ctx context.Context, email, password string) (
 
 	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Println(err.Error())
 		return Account{}, err
 	}
 	account.HashedPassword = string(hashedBytes)
@@ -57,7 +55,6 @@ func (as AccountService) Register(ctx context.Context, email, password string) (
 
 	_, err = as.ddb.PutItem(ctx, &putItemInput)
 	if err != nil {
-		log.Println(err.Error())
 		return Account{}, err
 	}
 
@@ -76,19 +73,16 @@ func (as AccountService) Login(ctx context.Context, email, password string) (str
 
 	getItemResponse, err := as.ddb.GetItem(ctx, &getItemInput)
 	if err != nil {
-		log.Println(err.Error())
 		return "", err
 	}
 
 	if getItemResponse.Item == nil {
 		err := fmt.Errorf("account not found: %s", email)
-		log.Println(err.Error())
 		return "", err
 	}
 	hashedPassword := getItemResponse.Item["password"].(*types.AttributeValueMemberS).Value
 	savedEmail := getItemResponse.Item["email"].(*types.AttributeValueMemberS).Value
 	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err != nil {
-		log.Println(err.Error())
 		return "", err
 	}
 
@@ -114,13 +108,11 @@ func (as AccountService) GetByEmail(ctx context.Context, email string) (Account,
 
 	getItemResponse, err := as.ddb.GetItem(ctx, &getItemInput)
 	if err != nil {
-		log.Println(err.Error())
 		return Account{}, err
 	}
 
 	if getItemResponse.Item == nil {
 		err := fmt.Errorf("account not found: %s", email)
-		log.Println(err.Error())
 		return Account{}, err
 	}
 

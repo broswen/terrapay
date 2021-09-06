@@ -4,10 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/broswen/terrapay/account"
 )
+
+var ddbClient *dynamodb.Client
+var accountService *account.AccountService
 
 type LoginRequest struct {
 	Email    string `json:"email"`
@@ -30,14 +37,14 @@ func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 
 	// validate request
 
-	// check if user account exists
+	token, err := accountService.Login(ctx, request.Email, request.Password)
 
-	// if exists, hash and compare password hashes
-
-	// if valid user, generate jwt and return
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	response := LoginResponse{
-		Token: "test",
+		Token: token,
 	}
 	j, err := json.Marshal(response)
 	if err != nil {
@@ -48,6 +55,18 @@ func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 		StatusCode: 200,
 		Body:       string(j),
 	}, nil
+}
+
+func init() {
+	cfg, err := config.LoadDefaultConfig(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	ddbClient = dynamodb.NewFromConfig(cfg)
+	accountService, err = account.NewFromClient(ddbClient)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {
