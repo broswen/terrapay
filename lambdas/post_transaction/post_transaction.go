@@ -28,7 +28,7 @@ type PostTransactionResponse struct {
 
 func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 
-	authorization, ok := event.Headers["Authorization"]
+	authorization, ok := event.Headers["authorization"]
 	if !ok {
 		log.Println("missing jwt")
 		return events.APIGatewayV2HTTPResponse{

@@ -87,11 +87,19 @@ module "register_lambda" {
   runtime       = "go1.x"
   memory_size   = 128
   timeout       = 3
+  publish       = true
 
   source_path = "./bin/register"
 
   environment_variables = {
     ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
+  }
+
+  allowed_triggers = {
+    "APIGatewayAny" = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.apigatewayv2_api_execution_arn}/*"
+    }
   }
 
   attach_policies    = true
@@ -108,6 +116,7 @@ module "login_lambda" {
   runtime       = "go1.x"
   memory_size   = 128
   timeout       = 3
+  publish       = true
 
   source_path = "./bin/login"
 
@@ -115,25 +124,11 @@ module "login_lambda" {
     ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
   }
 
-  attach_policies    = true
-  number_of_policies = 1
-  policies = [
-    aws_iam_policy.read_write_accounts.arn
-  ]
-}
-
-module "post_transaction" {
-  source        = "terraform-aws-modules/lambda/aws"
-  function_name = "${var.name}-${var.stage}-post-transaction"
-  handler       = "post_transaction"
-  runtime       = "go1.x"
-  memory_size   = 128
-  timeout       = 3
-
-  source_path = "./bin/post_transaction"
-
-  environment_variables = {
-    ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
+  allowed_triggers = {
+    "APIGatewayAny" = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.apigatewayv2_api_execution_arn}/*"
+    }
   }
 
   attach_policies    = true
@@ -143,18 +138,55 @@ module "post_transaction" {
   ]
 }
 
-module "get_transactions" {
+module "post_transaction_lambda" {
+  source        = "terraform-aws-modules/lambda/aws"
+  function_name = "${var.name}-${var.stage}-post-transaction"
+  handler       = "post_transaction"
+  runtime       = "go1.x"
+  memory_size   = 128
+  timeout       = 3
+  publish       = true
+
+  source_path = "./bin/post_transaction"
+
+  environment_variables = {
+    ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
+  }
+
+  allowed_triggers = {
+    "APIGatewayAny" = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.apigatewayv2_api_execution_arn}/*"
+    }
+  }
+
+  attach_policies    = true
+  number_of_policies = 1
+  policies = [
+    aws_iam_policy.read_write_accounts.arn
+  ]
+}
+
+module "get_transactions_lambda" {
   source        = "terraform-aws-modules/lambda/aws"
   function_name = "${var.name}-${var.stage}-get-transactions"
   handler       = "get_transactions"
   runtime       = "go1.x"
   memory_size   = 128
   timeout       = 3
+  publish       = true
 
   source_path = "./bin/get_transactions"
 
   environment_variables = {
     ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
+  }
+
+  allowed_triggers = {
+    "APIGatewayAny" = {
+      service    = "apigateway"
+      source_arn = "${module.api_gateway.apigatewayv2_api_execution_arn}/*"
+    }
   }
 
   attach_policies    = true
@@ -346,17 +378,38 @@ resource "aws_iam_role_policy_attachment" "delivery_role_event_processor" {
   policy_arn = aws_iam_policy.event_processor_invoke.arn
 }
 
-# iam role for firehose to read from kinesis and write to s3
-# iam role for lambda event processor to run
-# iam role for api lambdas to read/write to dynamodb
-# iam role for transaction notification to publish to sns and read from dynamodb stream
+resource "aws_cloudwatch_log_group" "access_logs" {
+}
 
-# iam role 
-# "Action": [
-#   "s3:GetObject",
-#   "s3:PutObject",
-#   "s3:DeleteObject",
-#   "s3:CopyObject",
+module "api_gateway" {
+  source                 = "terraform-aws-modules/apigateway-v2/aws"
+  name                   = "${var.name}-${var.stage}-api"
+  create_api_domain_name = false
+  protocol_type          = "HTTP"
 
-# ],
+  default_stage_access_log_format          = "$context.identity.sourceIp - - [$context.requestTime] \"$context.httpMethod $context.routeKey $context.protocol\" $context.status $context.responseLength $context.requestId $context.integrationErrorMessage"
+  default_stage_access_log_destination_arn = aws_cloudwatch_log_group.access_logs.arn
 
+  integrations = {
+    "POST /register" = {
+      lambda_arn             = module.register_lambda.lambda_function_arn
+      payload_format_version = "2.0"
+      timeout_milliseconds   = 3000
+    }
+    "POST /login" = {
+      lambda_arn             = module.login_lambda.lambda_function_arn
+      payload_format_version = "2.0"
+      timeout_milliseconds   = 3000
+    }
+    "POST /transaction" = {
+      lambda_arn             = module.post_transaction_lambda.lambda_function_arn
+      payload_format_version = "2.0"
+      timeout_milliseconds   = 3000
+    }
+    "GET /transaction" = {
+      lambda_arn             = module.get_transactions_lambda.lambda_function_arn
+      payload_format_version = "2.0"
+      timeout_milliseconds   = 3000
+    }
+  }
+}
