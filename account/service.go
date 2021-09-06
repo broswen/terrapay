@@ -24,6 +24,22 @@ type Account struct {
 	Balance        float64 `json:"balance"`
 }
 
+type ActionType string
+
+const (
+	Pay     ActionType = "pay"
+	Receive ActionType = "receive"
+)
+
+type Transaction struct {
+	Id          string     `json:"id"`
+	Amount      float64    `json:"amount"`
+	Timestamp   time.Time  `json:"timestamp"`
+	Email       string     `json:"email"`
+	Participant string     `json:"participant"`
+	Action      ActionType `json:"action"`
+}
+
 func NewFromClient(dynamodbClient *dynamodb.Client) (*AccountService, error) {
 	return &AccountService{
 		ddb: dynamodbClient,
@@ -127,4 +143,49 @@ func (as AccountService) GetByEmail(ctx context.Context, email string) (Account,
 	}
 
 	return account, nil
+}
+
+func (as AccountService) GetTransactions(ctx context.Context, email string) ([]Transaction, error) {
+	transactions := make([]Transaction, 0)
+	queryInput := &dynamodb.QueryInput{
+		TableName:              aws.String(os.Getenv("ACCOUNTSTABLE")),
+		KeyConditionExpression: aws.String(":p = #p AND begins_with(:s, #s)"),
+		ExpressionAttributeNames: map[string]string{
+			":p": "PK",
+			":s": "SK",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			"#p": &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", email)},
+			"#s": &types.AttributeValueMemberS{Value: "T#"},
+		},
+	}
+
+	queryResponse, err := as.ddb.Query(ctx, queryInput)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO setup pagination or loop for large transaction list
+
+	for _, t := range queryResponse.Items {
+		amount, err := strconv.ParseFloat(t["amount"].(*types.AttributeValueMemberN).Value, 64)
+		if err != nil {
+			return nil, err
+		}
+		timestamp, err := time.Parse(time.RFC3339, t["timestamp"].(*types.AttributeValueMemberS).Value)
+		if err != nil {
+			return nil, err
+		}
+		transaction := Transaction{
+			Id:          t["id"].(*types.AttributeValueMemberS).Value,
+			Email:       t["email"].(*types.AttributeValueMemberS).Value,
+			Amount:      amount,
+			Participant: t["participant"].(*types.AttributeValueMemberS).Value,
+			Action:      ActionType(t["action"].(*types.AttributeValueMemberS).Value),
+			Timestamp:   timestamp,
+		}
+		transactions = append(transactions, transaction)
+	}
+
+	return transactions, nil
 }
