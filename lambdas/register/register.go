@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/broswen/terrapay/account"
 )
+
+var ddbClient *dynamodb.Client
+var accountService *account.AccountService
 
 type RegisterRequest struct {
 	Email    string `json:"email"`
@@ -25,21 +31,26 @@ func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 
 	fmt.Printf("%v\n", request)
 
-	// validate request
-
-	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
+	_, err = accountService.Register(ctx, request.Email, request.Password)
 	if err != nil {
-		return events.APIGatewayV2HTTPResponse{}, err
+		log.Fatal(err)
 	}
-
-	fmt.Println(string(hashedBytes))
-	// check if user already exists
-	// bcrypt hash password
-	// insert into dynamodb table
 
 	return events.APIGatewayV2HTTPResponse{
 		StatusCode: 200,
 	}, nil
+}
+
+func init() {
+	cfg, err := config.LoadDefaultConfig(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	ddbClient = dynamodb.NewFromConfig(cfg)
+	accountService, err = account.NewFromClient(ddbClient)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {

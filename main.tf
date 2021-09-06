@@ -91,7 +91,7 @@ module "register_lambda" {
   source_path = "./bin/register"
 
   environment_variables = {
-    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+    ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
   }
 
   attach_policies    = true
@@ -112,7 +112,7 @@ module "login_lambda" {
   source_path = "./bin/login"
 
   environment_variables = {
-    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+    ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
   }
 
   attach_policies    = true
@@ -133,7 +133,7 @@ module "post_transaction" {
   source_path = "./bin/post_transaction"
 
   environment_variables = {
-    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+    ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
   }
 
   attach_policies    = true
@@ -154,7 +154,7 @@ module "get_transactions" {
   source_path = "./bin/get_transactions"
 
   environment_variables = {
-    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+    ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
   }
 
   attach_policies    = true
@@ -182,7 +182,7 @@ module "send_notification" {
   source_path = "./bin/send_notification"
 
   environment_variables = {
-    ACCOUNTSDB = aws_dynamodb_table.accounts.name
+    ACCOUNTSTABLE = aws_dynamodb_table.accounts.name
   }
 
   allowed_triggers = {
