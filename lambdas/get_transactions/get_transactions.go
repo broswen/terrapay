@@ -17,6 +17,7 @@ var ddbClient *dynamodb.Client
 var accountService *account.AccountService
 
 type GetTransactionsResponse struct {
+	Balance      float64               `json:"balance"`
 	Transactions []account.Transaction `json:"transactions"`
 }
 
@@ -56,8 +57,17 @@ func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 		}, nil
 	}
 
+	account, err := accountService.GetByEmail(ctx, claims.Subject)
+	if err != nil {
+		log.Println(err.Error())
+		return events.APIGatewayV2HTTPResponse{
+			StatusCode: 500,
+		}, nil
+	}
+
 	response := GetTransactionsResponse{
 		Transactions: transactions,
+		Balance:      account.Balance,
 	}
 
 	j, err := json.Marshal(response)

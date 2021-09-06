@@ -67,15 +67,6 @@ func HandleRequest(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 			StatusCode: 500,
 		}, nil
 	}
-	// validate source has amount
-
-	// submit write transaction with 4 records
-	// decrement source by amount, validate amount is available
-	// increment destination by amount
-	// put withdrawal record in source
-	// put deposit record in destination
-
-	// return transaction id
 
 	response := PostTransactionResponse{
 		Transactions: transaction,

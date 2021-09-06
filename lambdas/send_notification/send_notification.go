@@ -6,6 +6,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/broswen/terrapay/account"
 )
 
 func HandleRequest(ctx context.Context, event events.DynamoDBEvent) error {
@@ -17,23 +18,29 @@ func HandleRequest(ctx context.Context, event events.DynamoDBEvent) error {
 		}
 		// INSERT types means a new record (either a new account or new transaction)
 		newImage := record.Change.NewImage
-		switch newImage["type"].String() {
-		case "WITHDRAWAL":
+		switch newImage["action"].String() {
+		case string(account.Pay):
 			amount, err := newImage["amount"].Float()
+			id := newImage["id"]
+			sender := newImage["sender"]
+			recipient := newImage["recipient"]
+			timestamp := newImage["timestamp"]
 			if err != nil {
 				fmt.Printf("get amount: %v", err)
 				continue
 			}
-			fmt.Printf("withdrawal from %s to %s for %f\n", newImage["source"].String(), newImage["destination"].String(), amount)
-			// send withdrawal notice
-		case "DEPOSIT":
+			fmt.Printf("Sending payment from %s to %s\nId: %s\nAmount: %.2f\nTimestamp: %s\n", sender, recipient, id, amount, timestamp)
+		case string(account.Receive):
 			amount, err := newImage["amount"].Float()
+			id := newImage["id"]
+			sender := newImage["sender"]
+			recipient := newImage["recipient"]
+			timestamp := newImage["timestamp"]
 			if err != nil {
 				fmt.Printf("get amount: %v", err)
 				continue
 			}
-			fmt.Printf("deposit from %s to %s for %f\n", newImage["source"].String(), newImage["destination"].String(), amount)
-			// send deposit notice
+			fmt.Printf("Sending payment from %s to %s\nId: %s\nAmount: %.2f\nTimestamp: %s\n", sender, recipient, id, amount, timestamp)
 		default:
 			fmt.Println(newImage)
 		}

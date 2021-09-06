@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.8.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.5.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/segmentio/ksuid v1.0.4
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
 )
 
@@ -23,5 +24,4 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.7.0 // indirect
 	github.com/aws/smithy-go v1.8.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/segmentio/ksuid v1.0.4 // indirect
 )
