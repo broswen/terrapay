@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/golang-jwt/jwt"
+	"github.com/segmentio/ksuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -32,12 +33,11 @@ const (
 )
 
 type Transaction struct {
-	Id          string     `json:"id"`
-	Amount      float64    `json:"amount"`
-	Timestamp   time.Time  `json:"timestamp"`
-	Email       string     `json:"email"`
-	Participant string     `json:"participant"`
-	Action      ActionType `json:"action"`
+	Id        string    `json:"id"`
+	Amount    float64   `json:"amount"`
+	Timestamp time.Time `json:"timestamp"`
+	Sender    string    `json:"sender"`
+	Recipient string    `json:"recipient"`
 }
 
 func NewFromClient(dynamodbClient *dynamodb.Client) (*AccountService, error) {
@@ -149,14 +149,14 @@ func (as AccountService) GetTransactions(ctx context.Context, email string) ([]T
 	transactions := make([]Transaction, 0)
 	queryInput := &dynamodb.QueryInput{
 		TableName:              aws.String(os.Getenv("ACCOUNTSTABLE")),
-		KeyConditionExpression: aws.String(":p = #p AND begins_with(:s, #s)"),
+		KeyConditionExpression: aws.String("#p = :p AND begins_with(#s, :s)"),
 		ExpressionAttributeNames: map[string]string{
-			":p": "PK",
-			":s": "SK",
+			"#p": "PK",
+			"#s": "SK",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			"#p": &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", email)},
-			"#s": &types.AttributeValueMemberS{Value: "T#"},
+			":p": &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", email)},
+			":s": &types.AttributeValueMemberS{Value: "T#"},
 		},
 	}
 
@@ -177,15 +177,118 @@ func (as AccountService) GetTransactions(ctx context.Context, email string) ([]T
 			return nil, err
 		}
 		transaction := Transaction{
-			Id:          t["id"].(*types.AttributeValueMemberS).Value,
-			Email:       t["email"].(*types.AttributeValueMemberS).Value,
-			Amount:      amount,
-			Participant: t["participant"].(*types.AttributeValueMemberS).Value,
-			Action:      ActionType(t["action"].(*types.AttributeValueMemberS).Value),
-			Timestamp:   timestamp,
+			Id:        t["id"].(*types.AttributeValueMemberS).Value,
+			Sender:    t["sender"].(*types.AttributeValueMemberS).Value,
+			Amount:    amount,
+			Recipient: t["recipient"].(*types.AttributeValueMemberS).Value,
+			Timestamp: timestamp,
 		}
 		transactions = append(transactions, transaction)
 	}
 
 	return transactions, nil
+}
+
+func (as AccountService) PostTransaction(ctx context.Context, sender, receiver string, amount float64) (Transaction, error) {
+	senderAccount, err := as.GetByEmail(ctx, sender)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	_, err = as.GetByEmail(ctx, receiver)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	if senderAccount.Balance < amount {
+		return Transaction{}, fmt.Errorf("insufficient funds: %f", amount)
+	}
+
+	id, err := ksuid.NewRandom()
+	if err != nil {
+		return Transaction{}, err
+	}
+	stringAmount := fmt.Sprintf("%.2f", amount)
+
+	transaction := Transaction{
+		Id:        id.String(),
+		Amount:    amount,
+		Timestamp: time.Now(),
+		Sender:    sender,
+		Recipient: receiver,
+	}
+
+	transactWriteInput := dynamodb.TransactWriteItemsInput{
+		TransactItems: []types.TransactWriteItem{
+			{
+				Put: &types.Put{
+					TableName: aws.String(os.Getenv("ACCOUNTSTABLE")),
+					Item: map[string]types.AttributeValue{
+						"PK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", transaction.Sender)},
+						"SK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("T#%s", transaction.Id)},
+						"id":        &types.AttributeValueMemberS{Value: transaction.Id},
+						"timestamp": &types.AttributeValueMemberS{Value: transaction.Timestamp.Format(time.RFC3339)},
+						"sender":    &types.AttributeValueMemberS{Value: transaction.Sender},
+						"recipient": &types.AttributeValueMemberS{Value: transaction.Recipient},
+						"amount":    &types.AttributeValueMemberS{Value: stringAmount},
+					},
+					ConditionExpression: aws.String("attribute_not_exists(SK)"),
+				},
+			},
+			{
+				Put: &types.Put{
+					TableName: aws.String(os.Getenv("ACCOUNTSTABLE")),
+					Item: map[string]types.AttributeValue{
+						"PK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", transaction.Recipient)},
+						"SK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("T#%s", transaction.Id)},
+						"id":        &types.AttributeValueMemberS{Value: transaction.Id},
+						"timestamp": &types.AttributeValueMemberS{Value: transaction.Timestamp.Format(time.RFC3339)},
+						"sender":    &types.AttributeValueMemberS{Value: transaction.Sender},
+						"recipient": &types.AttributeValueMemberS{Value: transaction.Recipient},
+						"amount":    &types.AttributeValueMemberS{Value: stringAmount},
+					},
+					ConditionExpression: aws.String("attribute_not_exists(SK)"),
+				},
+			},
+			{
+				Update: &types.Update{
+					TableName:        aws.String(os.Getenv("ACCOUNTSTABLE")),
+					UpdateExpression: aws.String("SET #b = #b - :a"),
+					ExpressionAttributeNames: map[string]string{
+						"#b": "balance",
+					},
+					ExpressionAttributeValues: map[string]types.AttributeValue{
+						":a": &types.AttributeValueMemberN{Value: stringAmount},
+					},
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", transaction.Sender)},
+						"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", transaction.Sender)},
+					},
+				},
+			},
+			{
+				Update: &types.Update{
+					TableName:        aws.String(os.Getenv("ACCOUNTSTABLE")),
+					UpdateExpression: aws.String("SET #b = #b + :a"),
+					ExpressionAttributeNames: map[string]string{
+						"#b": "balance",
+					},
+					ExpressionAttributeValues: map[string]types.AttributeValue{
+						":a": &types.AttributeValueMemberN{Value: stringAmount},
+					},
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", transaction.Recipient)},
+						"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("A#%s", transaction.Recipient)},
+					},
+				},
+			},
+		},
+	}
+
+	_, err = as.ddb.TransactWriteItems(ctx, &transactWriteInput)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	return transaction, nil
 }
